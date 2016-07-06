@@ -97,6 +97,7 @@ LICENSE file.
     <riak.version>2.0.5</riak.version>
     <aerospike.version>3.1.2</aerospike.version>
     <solr.version>5.4.0</solr.version>
+    <documentdb.version>1.8.1</documentdb.version>
   </properties>
 
   <modules>
@@ -112,6 +113,7 @@ LICENSE file.
     <module>couchbase</module>
     <module>couchbase2</module>
     <module>distribution</module>
+    <module>documentdb</module>
     <module>dynamodb</module>
     <module>elasticsearch</module>
     <module>geode</module>
