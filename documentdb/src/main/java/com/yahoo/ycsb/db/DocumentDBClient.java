@@ -29,6 +29,7 @@ public class DocumentDBClient extends DB {
   private DocumentClient client;
   private String databaseForTest = "testdb";
   private boolean useSinglePartitionCollection = false;
+  private boolean useUpsert = false;
 
   @Override
   public void init() throws DBException {
@@ -47,6 +48,11 @@ public class DocumentDBClient extends DB {
     String partitionedCollectionUsage = getProperties().getProperty("documentdb.useSinglePartitionCollection", null);
     if (null != partitionedCollectionUsage && "true".equalsIgnoreCase(partitionedCollectionUsage)) {
       useSinglePartitionCollection = true;
+    }
+
+    String useUpsertStr = getProperties().getProperty("documentdb.useUpsert", null);
+    if (null != useUpsertStr && "true".equalsIgnoreCase(useUpsertStr)) {
+      useUpsert = true;
     }
 
     String dbForTest = getProperties().getProperty("documentdb.databaseForTest", null);
@@ -155,10 +161,17 @@ public class DocumentDBClient extends DB {
                     "  'key': 'value'" +
                     "}");
     try {
-      Document document = this.client.createDocument(getDocumentCollectionLink(table),
-              documentDefinition,
-              getRequestOptions(key),
-              true).getResource();
+      if (useUpsert) {
+        Document document = this.client.upsertDocument(getDocumentCollectionLink(table),
+          documentDefinition,
+          getRequestOptions(key),
+          true).getResource();
+      } else {
+        Document document = this.client.createDocument(getDocumentCollectionLink(table),
+          documentDefinition,
+          getRequestOptions(key),
+          true).getResource();
+      }
     } catch (DocumentClientException e) {
       LOGGER.error(e);
       return Status.ERROR;
