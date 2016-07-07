@@ -153,24 +153,18 @@ public class DocumentDBClient extends DB {
       LOGGER.debug("insertkey: " + key + " from table: " + table);
     }
 
-    Document documentDefinition = new Document(
-            "{" +
-                    "  'id': '" + key + "', " +
-                    "  'name': 'sample document'," +
-                    "  'foo': 'bar Ã¤Â½Â Ã¥Â¥Â½'," +  // foo contains some UTF-8 characters.
-                    "  'key': 'value'" +
-                    "}");
+    Document documentDefinition = getDocumentDefinition(key, values);
     try {
       if (useUpsert) {
         Document document = this.client.upsertDocument(getDocumentCollectionLink(table),
-          documentDefinition,
-          getRequestOptions(key),
-          true).getResource();
+            documentDefinition,
+            getRequestOptions(key),
+            true).getResource();
       } else {
         Document document = this.client.createDocument(getDocumentCollectionLink(table),
-          documentDefinition,
-          getRequestOptions(key),
-          true).getResource();
+            documentDefinition,
+            getRequestOptions(key),
+            true).getResource();
       }
     } catch (DocumentClientException e) {
       LOGGER.error(e);
@@ -242,5 +236,14 @@ public class DocumentDBClient extends DB {
             getDocumentCollectionLink(table),
             DOCUMENTS_PATH_SEGMENT,
             key);
+  }
+
+  private static Document getDocumentDefinition(String key, HashMap<String, ByteIterator> values) {
+    Document document = new Document();
+    for (Entry<String, ByteIterator> entry : values.entrySet()) {
+      document.set(entry.getKey(), entry.getValue().toString());
+    }
+    document.set("id", key);
+    return document;
   }
 }
