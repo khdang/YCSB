@@ -21,70 +21,45 @@ import java.util.Vector;
 
 public class DocumentDBClient extends DB {
 
-  private DocumentClient client;
-
-  private static String databaseForTest = "testdb";
-//  private static String collectionForTest = "usertable";
-  private static final boolean IS_NAME_BASED = true;
-
   private static final String DATABASES_PATH_SEGMENT = "dbs";
   private static final String COLLECTIONS_PATH_SEGMENT = "colls";
   private static final String DOCUMENTS_PATH_SEGMENT = "docs";
-  private static final String DEFAULT_ENDPONT = "https://localhost:443/";
-  private static final String DEFAULT_PRIMARYKEY =
-          "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
-  private static final boolean DEFAULT_DEBUG = true;
-
   private static final Logger LOGGER = Logger.getLogger(DocumentDBClient.class);
 
-  private String endpoint = "https://localhost:443/";
+  private DocumentClient client;
+  private String databaseForTest = "testdb";
+  private boolean useSinglePartitionCollection = false;
 
   @Override
   public void init() throws DBException {
-    String debug = getProperties().getProperty("documentdb.debug", String.valueOf(DEFAULT_DEBUG));
-
+    String debug = getProperties().getProperty("documentdb.debug", null);
     if (null != debug && "true".equalsIgnoreCase(debug)) {
       LOGGER.setLevel(Level.DEBUG);
     }
 
-    String primaryKey = getProperties().getProperty("documentdb.primaryKey", DEFAULT_PRIMARYKEY);
-    String configuredEndpoint = getProperties().getProperty("documentdb.host", DEFAULT_ENDPONT);
+    String masterKey = getProperties().getProperty("documentdb.masterKey", null);
+    String host = getProperties().getProperty("documentdb.host", null);
 
-    if (null == primaryKey || primaryKey.length() < 1) {
+    if (null == masterKey || masterKey.length() < 1) {
       throw new DBException("Missing primary key attribute name, cannot continue");
     }
 
-    if (null != configuredEndpoint) {
-      this.endpoint = configuredEndpoint;
+    String partitionedCollectionUsage = getProperties().getProperty("documentdb.useSinglePartitionCollection", null);
+    if (null != partitionedCollectionUsage && "true".equalsIgnoreCase(partitionedCollectionUsage)) {
+      useSinglePartitionCollection = true;
+    }
+
+    String dbForTest = getProperties().getProperty("documentdb.databaseForTest", null);
+    if (null != dbForTest && dbForTest.length() > 1) {
+      this.databaseForTest = dbForTest;
     }
 
     try {
-      this.client = new DocumentClient(this.endpoint, primaryKey, new ConnectionPolicy(), ConsistencyLevel.Session);
-      LOGGER.info("DocumentDB connection created with " + this.endpoint);
-    } catch (Exception e1) {
-      LOGGER.error("DocumentDBClient.init(): Could not initialize DocumentDB client.", e1);
+      this.client = new DocumentClient(host, masterKey, new ConnectionPolicy(), ConsistencyLevel.Session);
+      LOGGER.info("DocumentDB connection created with " + host);
+    } catch (Exception e) {
+      LOGGER.error("DocumentDBClient.init(): Could not initialize DocumentDB client.", e);
     }
-
-//        // Create the database for test.
-//        Database databaseDefinition = new Database();
-//        databaseDefinition.setId(databaseForTest);
-//        try {
-//            Database db = this.client.createDatabase(databaseDefinition, null).getResource();
-//        } catch (DocumentClientException ex) {
-//            LOGGER.error("DocumentDBClient.init(): Could not create database for test", ex);
-//        }
-//
-//        // Create the collection for test.
-//        DocumentCollection collectionDefinition = new DocumentCollection();
-//        collectionDefinition.setId(collectionForTest);
-//
-//        try {
-//            DocumentCollection collection = this.client
-//                .createCollection(getDatabaseNameLink(this.databaseForTest), collectionDefinition, null)
-//                .getResource();
-//        } catch (DocumentClientException ex) {
-//            LOGGER.error("DocumentDBClient.init(): Could not create collection for test", ex);
-//        }
   }
 
   @Override
@@ -97,9 +72,9 @@ public class DocumentDBClient extends DB {
     Document document = null;
 
     try {
-      document = this.client.readDocument(documentLink, null).getResource();
-    } catch (DocumentClientException ex) {
-      LOGGER.error(ex);
+      document = this.client.readDocument(documentLink, getRequestOptions(key)).getResource();
+    } catch (DocumentClientException e) {
+      LOGGER.error(e);
       return Status.ERROR;
     }
 
@@ -125,7 +100,7 @@ public class DocumentDBClient extends DB {
                     new SqlParameterCollection(
                       new SqlParameter("@recordcount", recordcount),
                       new SqlParameter("@startkey", startkey))),
-            null).getQueryIterable().toList();
+            getFeedOptions()).getQueryIterable().toList();
 
     for (Document document : documents) {
       result.add(extractResult(document));
@@ -144,9 +119,9 @@ public class DocumentDBClient extends DB {
     Document document = null;
 
     try {
-      document = this.client.readDocument(documentLink, null).getResource();
-    } catch (DocumentClientException ex) {
-      LOGGER.error(ex);
+      document = this.client.readDocument(documentLink, getRequestOptions(key)).getResource();
+    } catch (DocumentClientException e) {
+      LOGGER.error(e);
       return Status.ERROR;
     }
 
@@ -156,9 +131,9 @@ public class DocumentDBClient extends DB {
       }
 
       try {
-        this.client.replaceDocument(document, null);
-      } catch (DocumentClientException ex) {
-        LOGGER.error(ex);
+        this.client.replaceDocument(document, getRequestOptions(key));
+      } catch (DocumentClientException e) {
+        LOGGER.error(e);
         return Status.ERROR;
       }
     }
@@ -182,10 +157,10 @@ public class DocumentDBClient extends DB {
     try {
       Document document = this.client.createDocument(getDocumentCollectionLink(table),
               documentDefinition,
-              null,
+              getRequestOptions(key),
               true).getResource();
-    } catch (DocumentClientException ex) {
-      LOGGER.error(ex);
+    } catch (DocumentClientException e) {
+      LOGGER.error(e);
       return Status.ERROR;
     }
 
@@ -199,9 +174,9 @@ public class DocumentDBClient extends DB {
     }
 
     try {
-      this.client.deleteDocument(getDocumentLink(table, key), null);
-    } catch (DocumentClientException ex) {
-      LOGGER.error(ex);
+      this.client.deleteDocument(getDocumentLink(table, key), getRequestOptions(key));
+    } catch (DocumentClientException e) {
+      LOGGER.error(e);
       return Status.ERROR;
     }
 
@@ -223,19 +198,33 @@ public class DocumentDBClient extends DB {
     return rItems;
   }
 
-  public static String getDatabaseNameLink(String databaseId) {
-    return DATABASES_PATH_SEGMENT + "/" + databaseId;
+  private FeedOptions getFeedOptions() {
+    if (useSinglePartitionCollection) {
+      return null;
+    }
+    FeedOptions feedOptions = new FeedOptions();
+    feedOptions.setEnableCrossPartitionQuery(true);
+    return feedOptions;
   }
 
-  public static String getDocumentCollectionLink(String table) {
+  private RequestOptions getRequestOptions(String partitionKey) {
+    if (useSinglePartitionCollection) {
+      return null;
+    }
+    RequestOptions requestOptions = new RequestOptions();
+    requestOptions.setPartitionKey(new PartitionKey(partitionKey));
+    return requestOptions;
+  }
+
+  private String getDocumentCollectionLink(String table) {
     return String.format("%s/%s/%s/%s",
             DATABASES_PATH_SEGMENT,
-            databaseForTest,
+            this.databaseForTest,
             COLLECTIONS_PATH_SEGMENT,
             table);
   }
 
-  public static String getDocumentLink(String table, String key) {
+  private String getDocumentLink(String table, String key) {
     return String.format("%s/%s/%s",
             getDocumentCollectionLink(table),
             DOCUMENTS_PATH_SEGMENT,
