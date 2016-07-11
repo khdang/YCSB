@@ -30,6 +30,7 @@ public class DocumentDBClient extends DB {
   private String databaseForTest = "testdb";
   private boolean useSinglePartitionCollection = false;
   private boolean useUpsert = false;
+  private boolean useGatewayConnectivity = false;
 
   @Override
   public void init() throws DBException {
@@ -45,23 +46,30 @@ public class DocumentDBClient extends DB {
       throw new DBException("Missing primary key attribute name, cannot continue");
     }
 
-    String partitionedCollectionUsage = getProperties().getProperty("documentdb.useSinglePartitionCollection", null);
-    if (null != partitionedCollectionUsage && "true".equalsIgnoreCase(partitionedCollectionUsage)) {
-      useSinglePartitionCollection = true;
-    }
+    this.useSinglePartitionCollection =
+        Boolean.valueOf(getProperties().getProperty("documentdb.useSinglePartitionCollection", null));
 
-    String useUpsertStr = getProperties().getProperty("documentdb.useUpsert", null);
-    if (null != useUpsertStr && "true".equalsIgnoreCase(useUpsertStr)) {
-      useUpsert = true;
-    }
+    this.useUpsert =
+        Boolean.valueOf(getProperties().getProperty("documentdb.useUpsert", null));
 
     String dbForTest = getProperties().getProperty("documentdb.databaseForTest", null);
     if (null != dbForTest && dbForTest.length() > 1) {
       this.databaseForTest = dbForTest;
     }
 
+    this.useGatewayConnectivity =
+        Boolean.valueOf(getProperties().getProperty("documentdb.useGatewayConnectivity", null));
+
     try {
-      this.client = new DocumentClient(host, masterKey, new ConnectionPolicy(), ConsistencyLevel.Session);
+      if (!useGatewayConnectivity) {
+        LOGGER.info("Creating DocumentDB client with direct connectivity.." + host);
+        ConnectionPolicy policy = new ConnectionPolicy();
+        policy.setConnectionMode(ConnectionMode.DirectHttps);
+        this.client = new DocumentClient(host, masterKey, policy, ConsistencyLevel.Session);
+      } else {
+        LOGGER.info("Creating DocumentDB client with gateway connectivity.." + host);
+        this.client = new DocumentClient(host, masterKey, new ConnectionPolicy(), ConsistencyLevel.Session);
+      }
       LOGGER.info("DocumentDB connection created with " + host);
     } catch (Exception e) {
       LOGGER.error("DocumentDBClient.init(): Could not initialize DocumentDB client.", e);
@@ -137,7 +145,15 @@ public class DocumentDBClient extends DB {
       }
 
       try {
-        this.client.replaceDocument(document, getRequestOptions(key));
+        RequestOptions reqOptions = getRequestOptions(key);
+        if (reqOptions == null) {
+          reqOptions = new RequestOptions();
+        }
+        AccessCondition accessCondition = new AccessCondition();
+        accessCondition.setCondition(document.getETag());
+        accessCondition.setType(AccessConditionType.IfMatch);
+        reqOptions.setAccessCondition(accessCondition);
+        this.client.replaceDocument(document, reqOptions);
       } catch (DocumentClientException e) {
         LOGGER.error(e);
         return Status.ERROR;
