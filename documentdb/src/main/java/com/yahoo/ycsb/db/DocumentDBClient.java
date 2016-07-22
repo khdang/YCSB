@@ -31,6 +31,7 @@ public class DocumentDBClient extends DB {
   private boolean useSinglePartitionCollection = false;
   private boolean useUpsert = false;
   private boolean useGatewayConnectivity = false;
+  private ConsistencyLevel consistencyLevel = ConsistencyLevel.Session;
 
   @Override
   public void init() throws DBException {
@@ -60,15 +61,22 @@ public class DocumentDBClient extends DB {
     this.useGatewayConnectivity =
         Boolean.valueOf(getProperties().getProperty("documentdb.useGatewayConnectivity", null));
 
+    String consistencyStr = getProperties().getProperty("documentdb.consistencyLevel", null);
+    if (null != consistencyStr && consistencyStr.length() > 1) {
+      this.consistencyLevel = ConsistencyLevel.valueOf(consistencyStr);
+    }
+
     try {
       if (!useGatewayConnectivity) {
-        LOGGER.info("Creating DocumentDB client with direct connectivity.." + host);
+        LOGGER.info(String.format("Creating DocumentDB client %s.. connectivityMode=%s, consistencyLevel=%s",
+            host, "Direct", consistencyLevel.toString()));
         ConnectionPolicy policy = new ConnectionPolicy();
         policy.setConnectionMode(ConnectionMode.DirectHttps);
-        this.client = new DocumentClient(host, masterKey, policy, ConsistencyLevel.Session);
+        this.client = new DocumentClient(host, masterKey, policy, consistencyLevel);
       } else {
-        LOGGER.info("Creating DocumentDB client with gateway connectivity.." + host);
-        this.client = new DocumentClient(host, masterKey, new ConnectionPolicy(), ConsistencyLevel.Session);
+        LOGGER.info(String.format("Creating DocumentDB client %s.. connectivityMode=%s, consistencyLevel=%s",
+            host, "Gateway", consistencyLevel.toString()));
+        this.client = new DocumentClient(host, masterKey, new ConnectionPolicy(), consistencyLevel);
       }
       LOGGER.info("DocumentDB connection created with " + host);
     } catch (Exception e) {
